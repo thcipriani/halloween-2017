@@ -3,6 +3,7 @@
 import argparse
 import os
 import logging
+import subprocess
 import time
 
 
@@ -10,7 +11,9 @@ import RPi.GPIO as GPIO
 from Adafruit_MotorHAT import Adafruit_MotorHAT
 
 
-BASE_DIR = os.path.dirname(os.path.realpath(__file__))
+# Two directories up from bin/very-scary.py is the base_dir
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+SHARE_DIR = os.path.join(BASE_DIR, 'share', 'very-scary')
 
 
 class Pneumatic(object):
@@ -56,6 +59,7 @@ class App(object):
         self.log = logging.getLogger()
         self.pneumatic = Pneumatic(args)
         self.motion_pin = args.motion_pin
+        self.play_sound = args.quiet is False
         self.sound_file = os.path.realpath(os.path.expanduser(args.sound))
 
         GPIO.setmode(GPIO.BCM)
@@ -78,15 +82,26 @@ class App(object):
         time.sleep(5)
 
     def _play_sound(self):
-        self.log.debug(self.sound_file)
+        if not self.play_sound:
+            self.log.debug('not playing sound, in quiet mode')
+            return
+
+        cmd = ['/usr/bin/omxplayer', '-o', 'local', self.sound_file]
+
+        return subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT)
 
     def scare_em(self):
         """
         Do the actual children scaring
         """
         self.log.info('Scaring child')
-        self._play_sound()
-        self._do_popup()()
+        proc = self._play_sound()
+        self._do_popup()
+        proc.communicate()
+
 
     def run(self):
         """
@@ -115,8 +130,10 @@ def parse_args():
     ap.add_argument('-m', '--motor', type=int,
         default=4, help='Select which motor to use on'
                         'the adafruit MotorHAT')
+    ap.add_argument('-q', '--quiet', action='store_true',
+        help="Don't play a sound")
     ap.add_argument('-s', '--sound',
-         default=os.path.join(BASE_DIR, './sound.mp3'),
+         default=os.path.join(SHARE_DIR, './Scream.mp3'),
          help='scary sound to play')
     return ap.parse_args()
 

@@ -1,0 +1,9 @@
+[Unit]
+Description = A Very Scary Halloween Service
+
+[Service]
+ExecStart = /usr/local/bin/very-scary
+Restart = always
+
+[Install]
+WantedBy = default.target
