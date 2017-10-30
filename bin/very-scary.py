@@ -152,7 +152,6 @@ class App(object):
     def _lights_red(self):
         self.log.debug('Lights red')
         data = {
-            'transitiontime': 0,
             'hue': 0,
             'sat': 254,
             'bri': 254,
@@ -166,23 +165,22 @@ class App(object):
         Strobe ligths
         """
         self.log.debug('Lights strobe')
-        data = {
-            'transitiontime' : 0,
-            'hue': 33936,
-            'sat': 254,
-            'bri' : 254,
-            'on' : False
-        }
+        for x in xrange(0, 2):
+            data = {
+                'sat': 0,
+                'transitiontime': 0,
+            }
+            r = self._send_to_hue('action', data=data)
 
-        r = self._send_to_hue('action', data=data)
-        self.log.debug(r.json())
+            time.sleep(0.1)
 
-        data = {
-            'transitiontime' : 0,
-            'on' : True
-        }
-        r = self._send_to_hue('action', data=data)
-        self.log.debug(r.json())
+            data = {
+                'sat': 254,
+                'transitiontime': 0,
+            }
+            r = self._send_to_hue('action', data=data)
+            time.sleep(0.2)
+
 
     def scare_em(self):
         """
