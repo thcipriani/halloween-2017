@@ -2,7 +2,10 @@
 
 import argparse
 import os
+import json
 import logging
+import random
+import requests
 import subprocess
 import time
 
@@ -62,6 +65,14 @@ class App(object):
         self.play_sound = args.quiet is False
         self.sound_file = os.path.realpath(os.path.expanduser(args.sound))
 
+        self.has_hue = False
+
+        if not args.no_hue:
+            self.has_hue = True
+            self.hue_ip = args.hue_ip
+            self.hue_base_url = 'http://{}/api/newdeveloper'.format(self.hue_ip)
+            self._setup_lights()
+
         GPIO.setmode(GPIO.BCM)
         GPIO.setup(self.motion_pin, GPIO.IN)
 
@@ -74,12 +85,15 @@ class App(object):
 
     def _do_popup(self):
         self.pneumatic.up()
+        time.sleep(0.1)
+        self.pneumatic.down()
+        time.sleep(0.1)
+        self.pneumatic.up()
         self.log.debug('pneumatic is up for 5 seconds')
-        time.sleep(5)
 
+    def _do_popdown(self):
         self.pneumatic.down()
         self.log.debug('pneumatic is down')
-        time.sleep(5)
 
     def _play_sound(self):
         if not self.play_sound:
@@ -93,13 +107,99 @@ class App(object):
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT)
 
+    def _setup_lights(self):
+        self.log.debug('Setup lights')
+        lights = [2, 3]
+
+        # Setup lights
+        strobe_data = {'1' :'040000FFFF00003333000033330000FFFFFFFFFF'}
+
+        def lights_path(light):
+            return os.path.join(self.hue_base_url, 'lights', str(light), 'pointsymbol')
+
+        for light in lights:
+            r = requests.put(lights_path(light), data=json.dumps(strobe_data))
+            r.raise_for_status()
+
+        self._lights_normal()
+
+    def _send_to_hue(self, action, data):
+        if not self.has_hue:
+            return
+
+        data = json.dumps(data)
+        url = os.path.join(self.hue_base_url, 'groups', '1', action)
+        self.log.debug('Sending {}: {}'.format(url, data))
+        r = requests.put(url, data)
+        r.raise_for_status()
+        return r
+
+    def _lights_normal(self):
+        """
+        Make the lights normal
+        """
+        self.log.debug('Lights normal')
+        data = {
+            'transitiontime' : 0,
+            'hue': 47118,
+            'sat': 254,
+            'bri': 254,
+            'on': True,
+        }
+
+        self._send_to_hue('action', data=data)
+
+    def _lights_red(self):
+        self.log.debug('Lights red')
+        data = {
+            'transitiontime': 0,
+            'hue': 0,
+            'sat': 254,
+            'bri': 254,
+            'on': True,
+        }
+
+        self._send_to_hue('action', data=data)
+
+    def _lights_flicker(self):
+        """
+        Strobe ligths
+        """
+        self.log.debug('Lights strobe')
+        data = {
+            'transitiontime' : 0,
+            'hue': 33936,
+            'sat': 254,
+            'bri' : 254,
+            'on' : False
+        }
+
+        r = self._send_to_hue('action', data=data)
+        self.log.debug(r.json())
+
+        data = {
+            'transitiontime' : 0,
+            'on' : True
+        }
+        r = self._send_to_hue('action', data=data)
+        self.log.debug(r.json())
+
     def scare_em(self):
         """
         Do the actual children scaring
         """
         self.log.info('Scaring child')
         proc = self._play_sound()
+
+        self._lights_red()
+        time.sleep(0.5)
         self._do_popup()
+        self._lights_flicker()
+        self._lights_normal()
+
+        time.sleep(5)
+
+        self._do_popdown()
         proc.communicate()
 
 
@@ -135,6 +235,10 @@ def parse_args():
     ap.add_argument('-s', '--sound',
          default=os.path.join(SHARE_DIR, './Scream.mp3'),
          help='scary sound to play')
+    ap.add_argument('-i', '--hue-ip', default='172.16.1.29',
+         help='IP Address of the Hue bulb base station')
+    ap.add_argument('-n', '--no-hue', action='store_true',
+         help="Don't use the hue lights")
     return ap.parse_args()
 
 
